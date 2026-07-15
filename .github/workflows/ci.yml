@@ -151,6 +151,19 @@ jobs:
             dev)     echo "path=services/minicloud-plane/overlays/dev"     >> $GITHUB_OUTPUT ;;
           esac
 
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Trust minicloud CA
+        run: |
+          echo "${{ secrets.MINICLOUD_CA_CERT }}" \
+            | sudo tee /usr/local/share/ca-certificates/minicloud-ca.crt
+          sudo update-ca-certificates
+
       - name: Checkout minicloud-gitops
         uses: actions/checkout@v4
         with:
@@ -168,6 +181,20 @@ jobs:
         uses: imranismail/setup-kustomize@v2
         with:
           kustomize-version: "5.6.0"
+
+      - name: Verify image exists in Harbor before gitops bump
+        run: |
+          TAG="${{ needs.build-and-push.outputs.image_tag }}"
+          URL="https://${{ env.REGISTRY }}/v2/${{ env.IMAGE_NAME }}/manifests/${TAG}"
+          STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
+            --cacert /usr/local/share/ca-certificates/minicloud-ca.crt \
+            -H "Authorization: Basic $(echo -n '${{ secrets.HARBOR_USER }}:${{ secrets.HARBOR_PASSWORD }}' | base64)" \
+            "$URL")
+          if [ "$STATUS" != "200" ]; then
+            echo "Image $TAG not found in Harbor (HTTP $STATUS) — aborting gitops bump"
+            exit 1
+          fi
+          echo "Image $TAG confirmed in Harbor (HTTP $STATUS)"
 
       - name: Bump image tag and push signed commit
         run: |
