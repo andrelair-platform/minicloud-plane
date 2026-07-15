@@ -1,0 +1,32 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: minicloud-plane
+  description: |
+    Phase 60 — Level 4 integration service for Plane CE.
+    Exposes a REST proxy API consumed by Backstage and a webhook→NATS
+    bridge that publishes Plane events (issue.created, issue.updated, etc.)
+    to the messaging namespace for downstream consumers.
+  annotations:
+    backstage.io/source-location: url:https://github.com/andrelair-platform/minicloud-plane
+    github.com/project-slug: andrelair-platform/minicloud-plane
+    argocd/app-name: minicloud-plane-dev
+    backstage.io/kubernetes-id: minicloud-plane
+    plane.io/project-id: "PT"
+  tags:
+    - go
+    - service
+    - plane
+    - nats
+    - level4
+    - phase-60
+  links:
+    - url: https://plane.devandre.sbs
+      title: Plane CE (project tracker)
+      icon: web
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/andrelair-platform
+  system: minicloud-platform
