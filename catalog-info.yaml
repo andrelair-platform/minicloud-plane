@@ -30,3 +30,153 @@ spec:
   lifecycle: production
   owner: group:default/andrelair-platform
   system: minicloud-platform
+  providesApis:
+    - minicloud-plane-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: minicloud-plane-api
+  description: REST proxy API that exposes Plane CE project and issue data for internal tooling (consumed by Backstage via proxy).
+  annotations:
+    github.com/project-slug: andrelair-platform/minicloud-plane
+  tags:
+    - go
+    - rest
+    - plane
+    - internal
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:default/andrelair-platform
+  system: minicloud-platform
+  definition: |
+    openapi: "3.0.3"
+    info:
+      title: minicloud-plane API
+      version: "1.0.0"
+      description: >
+        Internal REST proxy that exposes Plane CE project and issue data.
+        Consumed by the Backstage @internal/plugin-minicloud-plane plugin
+        via the /api/proxy/minicloud-plane/ proxy endpoint.
+    servers:
+      - url: http://minicloud-plane.minicloud-plane-dev.svc.cluster.local:8080
+        description: In-cluster (via Backstage proxy)
+    paths:
+      /health:
+        get:
+          summary: Health check
+          operationId: healthCheck
+          responses:
+            "200":
+              description: Service is healthy
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ok
+                      service:
+                        type: string
+                        example: minicloud-plane
+      /api/projects:
+        get:
+          summary: List Plane projects
+          operationId: listProjects
+          description: Returns all projects in the configured Plane workspace.
+          responses:
+            "200":
+              description: Array of projects
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Project"
+            "502":
+              description: Upstream Plane API error
+      /api/projects/{projectId}/issues:
+        get:
+          summary: List issues for a project
+          operationId: listIssues
+          description: Returns up to 100 issues for the given project ID or identifier.
+          parameters:
+            - name: projectId
+              in: path
+              required: true
+              schema:
+                type: string
+              description: Plane project UUID or identifier (e.g. "PT")
+          responses:
+            "200":
+              description: Array of issues
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Issue"
+            "502":
+              description: Upstream Plane API error
+    components:
+      schemas:
+        Project:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            identifier:
+              type: string
+              example: PT
+            description:
+              type: string
+            network:
+              type: integer
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+        Issue:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            sequence_id:
+              type: integer
+            name:
+              type: string
+            description_stripped:
+              type: string
+            state:
+              type: string
+              format: uuid
+            priority:
+              type: string
+              enum: [urgent, high, medium, low, none]
+            assignees:
+              type: array
+              items:
+                type: string
+                format: uuid
+            label_ids:
+              type: array
+              items:
+                type: string
+                format: uuid
+            project:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
