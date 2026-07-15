@@ -15,7 +15,7 @@ func main() {
 	planeURL := mustEnv("PLANE_URL")        // https://plane.devandre.sbs
 	planeToken := mustEnv("PLANE_TOKEN")    // API token from Plane god-mode
 	workspace := mustEnv("PLANE_WORKSPACE") // workspace slug
-	natsURL := getEnv("NATS_URL", "nats://nats.nats.svc.cluster.local:4222")
+	natsURL := getEnv("NATS_URL", "nats://nats.messaging.svc.cluster.local:4222")
 	webhookSecret := getEnv("PLANE_WEBHOOK_SECRET", "")
 	port := getEnv("PORT", "8080")
 
