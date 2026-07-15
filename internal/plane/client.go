@@ -28,7 +28,7 @@ func (c *Client) do(path string, out any) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-Api-Token", c.apiToken)
+	req.Header.Set("X-Api-Key", c.apiToken)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
