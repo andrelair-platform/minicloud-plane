@@ -58,6 +58,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) verifySignature(sig string, body []byte) bool {
 	mac := hmac.New(sha256.New, []byte(h.secret))
 	mac.Write(body)
-	expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	expected := hex.EncodeToString(mac.Sum(nil))
 	return hmac.Equal([]byte(sig), []byte(expected))
 }
