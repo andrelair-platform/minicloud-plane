@@ -28,7 +28,7 @@ func (c *Client) do(path string, out any) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-Api-Token", c.apiToken)
+	req.Header.Set("X-Api-Key", c.apiToken)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -45,20 +45,20 @@ func (c *Client) do(path string, out any) error {
 
 func (c *Client) Projects() ([]Project, error) {
 	var result ListResponse[Project]
-	err := c.do(fmt.Sprintf("/api/v1/workspaces/%s/projects/", c.workspace), &result)
+	err := c.do(fmt.Sprintf("/api/workspaces/%s/projects/", c.workspace), &result)
 	return result.Results, err
 }
 
 func (c *Client) Issues(projectID string) ([]Issue, error) {
 	var result ListResponse[Issue]
-	path := fmt.Sprintf("/api/v1/workspaces/%s/projects/%s/issues/?per_page=100", c.workspace, projectID)
+	path := fmt.Sprintf("/api/workspaces/%s/projects/%s/issues/?per_page=100", c.workspace, projectID)
 	err := c.do(path, &result)
 	return result.Results, err
 }
 
 func (c *Client) Issue(projectID, issueID string) (*Issue, error) {
 	var issue Issue
-	path := fmt.Sprintf("/api/v1/workspaces/%s/projects/%s/issues/%s/", c.workspace, projectID, issueID)
+	path := fmt.Sprintf("/api/workspaces/%s/projects/%s/issues/%s/", c.workspace, projectID, issueID)
 	err := c.do(path, &issue)
 	return &issue, err
 }
