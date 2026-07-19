@@ -197,16 +197,30 @@ jobs:
           fi
           echo "Image $TAG confirmed in Harbor (HTTP $STATUS)"
 
-      - name: Bump image tag and push signed commit
+      - name: Bump image tag and open auto-merged PR
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
         run: |
+          SHA="${{ needs.build-and-push.outputs.image_tag }}"
+          BRANCH="ci/minicloud-plane-${SHA}"
+          git checkout -b "${BRANCH}"
           cd "${{ steps.overlay.outputs.path }}"
           kustomize edit set image \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHA}
           cd -
           git add "${{ steps.overlay.outputs.path }}/kustomization.yaml"
           if git diff --cached --quiet; then
-            echo "No change — already at ${{ needs.build-and-push.outputs.image_tag }}"
+            echo "No change — already at ${SHA}"
             exit 0
           fi
-          git commit -S -m "ci(minicloud-plane): bump ${{ needs.build-and-push.outputs.branch }} to ${{ needs.build-and-push.outputs.image_tag }}"
-          git push
+          git commit -S -m "ci(minicloud-plane): bump ${{ needs.build-and-push.outputs.branch }} to ${SHA}"
+          git push origin "${BRANCH}"
+          gh pr create \
+            --repo ${{ env.GITOPS_REPO }} \
+            --base main \
+            --head "${BRANCH}" \
+            --title "ci(minicloud-plane): bump ${{ needs.build-and-push.outputs.branch }} to ${SHA}" \
+            --body "Automated image promotion from CI run ${{ github.run_id }}."
+          gh pr merge "${BRANCH}" \
+            --repo ${{ env.GITOPS_REPO }} \
+            --admin --merge --delete-branch
