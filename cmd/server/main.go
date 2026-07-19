@@ -6,9 +6,11 @@ import (
 	"os"
 
 	planeapi "github.com/andrelair-platform/minicloud-plane/internal/api"
+	"github.com/andrelair-platform/minicloud-plane/internal/metrics"
 	natspub "github.com/andrelair-platform/minicloud-plane/internal/nats"
 	"github.com/andrelair-platform/minicloud-plane/internal/plane"
 	"github.com/andrelair-platform/minicloud-plane/internal/webhook"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -34,8 +36,9 @@ func main() {
 		w.Write([]byte(`{"status":"ok","service":"minicloud-plane"}`))
 	})
 
-	mux.Handle("/webhook", webhook.NewHandler(webhookSecret, publisher))
-	mux.Handle("/api/", planeapi.NewHandler(planeClient))
+	mux.Handle("/webhook", metrics.Instrument("/webhook", webhook.NewHandler(webhookSecret, publisher)))
+	mux.Handle("/api/", metrics.Instrument("/api/", planeapi.NewHandler(planeClient)))
+	mux.Handle("/metrics", promhttp.Handler())
 
 	log.Printf("minicloud-plane listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
