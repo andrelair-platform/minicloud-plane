@@ -31,10 +31,10 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+	mux.Handle("/health", metrics.Instrument("/health", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok","service":"minicloud-plane"}`))
-	})
+	})))
 
 	mux.Handle("/webhook", metrics.Instrument("/webhook", webhook.NewHandler(webhookSecret, publisher)))
 	mux.Handle("/api/", metrics.Instrument("/api/", planeapi.NewHandler(planeClient)))
