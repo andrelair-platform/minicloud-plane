@@ -16,6 +16,20 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
+// newServer builds the full HTTP handler. Extracted from main so integration
+// tests can call it with mock dependencies without starting a real listener.
+func newServer(client planeapi.PlaneClient, pub webhook.Publisher, webhookSecret string) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/health", metrics.Instrument("/health", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok","service":"minicloud-plane"}`)) //nolint:errcheck
+	})))
+	mux.Handle("/webhook", metrics.Instrument("/webhook", webhook.NewHandler(webhookSecret, pub)))
+	mux.Handle("/api/", metrics.Instrument("/api/", planeapi.NewHandler(client)))
+	mux.Handle("/metrics", promhttp.Handler())
+	return otelhttp.NewHandler(mux, "minicloud-plane")
+}
+
 func main() {
 	ctx := context.Background()
 	shutdown := tracing.Init(ctx, "minicloud-plane")
@@ -36,22 +50,8 @@ func main() {
 	}
 	defer publisher.Close()
 
-	mux := http.NewServeMux()
-
-	mux.Handle("/health", metrics.Instrument("/health", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok","service":"minicloud-plane"}`))
-	})))
-
-	mux.Handle("/webhook", metrics.Instrument("/webhook", webhook.NewHandler(webhookSecret, publisher)))
-	mux.Handle("/api/", metrics.Instrument("/api/", planeapi.NewHandler(planeClient)))
-	mux.Handle("/metrics", promhttp.Handler())
-
-	// otelhttp creates a root span per request and propagates W3C TraceContext so
-	// downstream NATS spans are linked as children of the incoming HTTP span.
-	handler := otelhttp.NewHandler(mux, "minicloud-plane")
 	log.Printf("minicloud-plane listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, handler))
+	log.Fatal(http.ListenAndServe(":"+port, newServer(planeClient, publisher, webhookSecret)))
 }
 
 func mustEnv(key string) string {
