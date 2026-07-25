@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -9,11 +10,17 @@ import (
 	"github.com/andrelair-platform/minicloud-plane/internal/metrics"
 	natspub "github.com/andrelair-platform/minicloud-plane/internal/nats"
 	"github.com/andrelair-platform/minicloud-plane/internal/plane"
+	"github.com/andrelair-platform/minicloud-plane/internal/tracing"
 	"github.com/andrelair-platform/minicloud-plane/internal/webhook"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func main() {
+	ctx := context.Background()
+	shutdown := tracing.Init(ctx, "minicloud-plane")
+	defer shutdown(ctx)
+
 	planeURL := mustEnv("PLANE_URL")        // https://plane.devandre.sbs
 	planeToken := mustEnv("PLANE_TOKEN")    // API token from Plane god-mode
 	workspace := mustEnv("PLANE_WORKSPACE") // workspace slug
@@ -40,8 +47,11 @@ func main() {
 	mux.Handle("/api/", metrics.Instrument("/api/", planeapi.NewHandler(planeClient)))
 	mux.Handle("/metrics", promhttp.Handler())
 
+	// otelhttp creates a root span per request and propagates W3C TraceContext so
+	// downstream NATS spans are linked as children of the incoming HTTP span.
+	handler := otelhttp.NewHandler(mux, "minicloud-plane")
 	log.Printf("minicloud-plane listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
 
 func mustEnv(key string) string {

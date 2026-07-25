@@ -47,7 +47,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("webhook: event=%s action=%s actor=%s", event.Event, event.Action, event.Actor)
 
-	if err := h.publisher.Publish(event.Event, event.Action, event); err != nil {
+	if err := h.publisher.Publish(r.Context(), event.Event, event.Action, event); err != nil {
 		log.Printf("WARN: NATS publish failed: %v", err)
 		// Don't return 500 — Plane retries on failure and we'd loop.
 	}
