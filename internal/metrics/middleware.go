@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -38,8 +39,19 @@ func Instrument(pattern string, h http.Handler) http.Handler {
 		sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
 		start := time.Now()
 		h.ServeHTTP(sw, r)
+		duration := time.Since(start).Seconds()
 		code := strconv.Itoa(sw.code)
 		httpRequestsTotal.WithLabelValues(r.Method, pattern, code).Inc()
-		httpRequestDuration.WithLabelValues(r.Method, pattern, code).Observe(time.Since(start).Seconds())
+		obs := httpRequestDuration.WithLabelValues(r.Method, pattern, code)
+		// Gap E: embed trace ID as exemplar so Grafana can link histogram samples
+		// to Tempo traces. otelhttp sets a span on the context before calling this
+		// handler, so SpanFromContext is valid when traces are flowing.
+		if sc := trace.SpanFromContext(r.Context()).SpanContext(); sc.IsValid() {
+			if eo, ok := obs.(prometheus.ExemplarObserver); ok {
+				eo.ObserveWithExemplar(duration, prometheus.Labels{"traceID": sc.TraceID().String()})
+				return
+			}
+		}
+		obs.Observe(duration)
 	})
 }
