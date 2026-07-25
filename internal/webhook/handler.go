@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,16 +10,20 @@ import (
 	"log"
 	"net/http"
 
-	natspub "github.com/andrelair-platform/minicloud-plane/internal/nats"
 	"github.com/andrelair-platform/minicloud-plane/internal/plane"
 )
 
-type Handler struct {
-	secret    string
-	publisher *natspub.Publisher
+// Publisher is satisfied by *nats.Publisher and any test double.
+type Publisher interface {
+	Publish(ctx context.Context, event, action string, data any) error
 }
 
-func NewHandler(secret string, publisher *natspub.Publisher) *Handler {
+type Handler struct {
+	secret    string
+	publisher Publisher
+}
+
+func NewHandler(secret string, publisher Publisher) *Handler {
 	return &Handler{secret: secret, publisher: publisher}
 }
 
