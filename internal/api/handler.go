@@ -9,13 +9,19 @@ import (
 	"github.com/andrelair-platform/minicloud-plane/internal/plane"
 )
 
+// PlaneClient is satisfied by *plane.Client and any test double.
+type PlaneClient interface {
+	Projects() ([]plane.Project, error)
+	Issues(projectID string) ([]plane.Issue, error)
+}
+
 // Handler exposes Plane data over a simple REST API.
 // Consumed by Backstage and other internal tools.
 type Handler struct {
-	client *plane.Client
+	client PlaneClient
 }
 
-func NewHandler(client *plane.Client) *Handler {
+func NewHandler(client PlaneClient) *Handler {
 	return &Handler{client: client}
 }
 
