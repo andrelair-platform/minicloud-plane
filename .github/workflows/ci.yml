@@ -315,9 +315,66 @@ jobs:
             -- -sf --max-time 5 http://minicloud-plane:8080/health
           echo "Smoke probe: /health OK"
 
-  # ── 6. Auto-promote to staging (main branch only, after smoke test) ─────────
+  # ── 6. k6 canary load injection (parallel with smoke-test) ──────────────────
+  # Fires immediately after bump-gitops so k6 traffic is flowing DURING the
+  # BlueGreen postPromotionAnalysis window. With initialDelay: 60s on the
+  # AnalysisTemplate, the first gate check fires when k6 has ~120s of data.
+  canary-load:
+    needs: bump-gitops
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Trust minicloud CA
+        run: |
+          echo "${{ secrets.MINICLOUD_CA_CERT }}" \
+            | sudo tee /usr/local/share/ca-certificates/minicloud-ca.crt
+          sudo update-ca-certificates
+
+      - name: Set up kubectl
+        run: |
+          curl -sSL "https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl" -o kubectl
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_BASE64 }}" | base64 -d > ~/.kube/config
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -q && sudo apt-get install -q k6
+
+      - name: Wait for ArgoCD sync then port-forward active service
+        run: |
+          echo "Waiting 30s for ArgoCD to pick up the new image tag..."
+          sleep 30
+          kubectl port-forward svc/minicloud-plane 8080:8080 -n minicloud-plane-dev &
+          echo "PF_PID=$!" >> $GITHUB_ENV
+          sleep 3
+
+      - name: Run k6 canary load test (5 min — covers postPromotionAnalysis window)
+        run: k6 run -e CANARY_DURATION=5m k6/smoke.js
+
+      - name: Teardown port-forward
+        if: always()
+        run: kill $PF_PID || true
+
+  # ── 7. Auto-promote to staging (main branch only, after both gates pass) ────
   promote-staging:
-    needs: smoke-test
+    needs: [smoke-test, canary-load]
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     steps:
