@@ -224,3 +224,192 @@ jobs:
           gh pr merge "${BRANCH}" \
             --repo ${{ env.GITOPS_REPO }} \
             --admin --merge --delete-branch
+
+  # ── 4. Rollout gate — wait for BlueGreen to reach Healthy ───────────────────
+  rollout-gate:
+    needs: bump-gitops
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Trust minicloud CA
+        run: |
+          echo "${{ secrets.MINICLOUD_CA_CERT }}" \
+            | sudo tee /usr/local/share/ca-certificates/minicloud-ca.crt
+          sudo update-ca-certificates
+
+      - name: Set up kubectl
+        run: |
+          curl -sSL "https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl" -o kubectl
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_BASE64 }}" | base64 -d > ~/.kube/config
+          curl -sSL "https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64" \
+            -o kubectl-argo-rollouts && chmod +x kubectl-argo-rollouts && sudo mv kubectl-argo-rollouts /usr/local/bin/
+
+      - name: Wait for Rollout to reach Healthy (max 8 min)
+        run: |
+          echo "Waiting 40s for ArgoCD to pick up the new image tag..."
+          sleep 40
+          for i in $(seq 1 44); do
+            PHASE=$(kubectl get rollout minicloud-plane -n minicloud-plane-dev \
+              -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "[$i/44] phase=${PHASE}"
+            if [ "$PHASE" = "Healthy" ]; then
+              echo "Rollout is Healthy"
+              exit 0
+            fi
+            if [ "$PHASE" = "Degraded" ]; then
+              echo "Rollout Degraded — AnalysisRun failed, auto-rollback triggered"
+              kubectl argo rollouts logs minicloud-plane -n minicloud-plane-dev --tail 50 || true
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "Timeout after 8 min"
+          kubectl describe rollout minicloud-plane -n minicloud-plane-dev || true
+          exit 1
+
+      - name: HTTP smoke probe
+        run: |
+          kubectl run smoke-plane-${{ github.run_id }} \
+            --image=curlimages/curl:8 \
+            --restart=Never \
+            --rm \
+            -n minicloud-plane-dev \
+            --timeout=30s \
+            -- -sf --max-time 5 http://minicloud-plane:8080/health
+          echo "Smoke probe: /health OK"
+
+  # ── 5. k6 canary load injection (parallel with rollout-gate) ─────────────────
+  # For BlueGreen, the postPromotionAnalysis fires AFTER active service switches.
+  # canary-load starts immediately after bump-gitops, so by the time the new
+  # pods are promoted (~90s), k6 has been running for ~60s.
+  # With initialDelay: 60s on postPromotionAnalysis, the first gate check fires
+  # 60s after promotion — k6 has ~120s of data in Prometheus at that point.
+  canary-load:
+    needs: bump-gitops
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Trust minicloud CA
+        run: |
+          echo "${{ secrets.MINICLOUD_CA_CERT }}" \
+            | sudo tee /usr/local/share/ca-certificates/minicloud-ca.crt
+          sudo update-ca-certificates
+
+      - name: Set up kubectl
+        run: |
+          curl -sSL "https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl" -o kubectl
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_BASE64 }}" | base64 -d > ~/.kube/config
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -q && sudo apt-get install -q k6
+
+      - name: Wait for ArgoCD sync then port-forward active service
+        run: |
+          echo "Waiting 30s for ArgoCD to pick up the new image tag..."
+          sleep 30
+          kubectl port-forward svc/minicloud-plane 8080:8080 -n minicloud-plane-dev &
+          echo "PF_PID=$!" >> $GITHUB_ENV
+          sleep 3
+
+      - name: Run k6 canary load test (5 min — covers postPromotionAnalysis window)
+        run: k6 run -e CANARY_DURATION=5m k6/smoke.js
+
+      - name: Teardown port-forward
+        if: always()
+        run: kill $PF_PID || true
+
+  # ── 6. Auto-promote to staging (main branch only, after both gates pass) ────
+  promote-staging:
+    needs: [rollout-gate, canary-load]
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Trust minicloud CA
+        run: |
+          echo "${{ secrets.MINICLOUD_CA_CERT }}" \
+            | sudo tee /usr/local/share/ca-certificates/minicloud-ca.crt
+          sudo update-ca-certificates
+
+      - name: Checkout minicloud-gitops
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.GITOPS_REPO }}
+          token: ${{ secrets.GITOPS_TOKEN }}
+
+      - name: Import GPG signing key
+        uses: crazy-max/ghaction-import-gpg@v7
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+
+      - name: Install kustomize
+        uses: imranismail/setup-kustomize@v3
+        with:
+          kustomize-version: "5.6.0"
+
+      - name: Open staging promotion PR
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+          SHA: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          SHA="${{ needs.build-and-push.outputs.image_tag }}"
+          BRANCH="ci/promote-minicloud-plane-staging-${SHA}"
+          git checkout -b "${BRANCH}"
+          cd services/minicloud-plane/overlays/staging
+          kustomize edit set image \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHA}
+          cd -
+          git add services/minicloud-plane/overlays/staging/kustomization.yaml
+          if git diff --cached --quiet; then
+            echo "Staging already at ${SHA} — nothing to promote"
+            exit 0
+          fi
+          git commit -S -m "ci(minicloud-plane): promote ${SHA} to staging"
+          git push origin "${BRANCH}"
+          gh pr create \
+            --repo ${{ env.GITOPS_REPO }} \
+            --base main \
+            --head "${BRANCH}" \
+            --title "promote(minicloud-plane): ${SHA} → staging" \
+            --body "Auto-generated staging promotion after:
+- Unit tests passed
+- Container image built, Trivy scanned, Cosign signed
+- BlueGreen Rollout reached Healthy in dev (prePromotionAnalysis + postPromotionAnalysis passed)
+- HTTP smoke probe passed
+- k6 load test passed during postPromotionAnalysis window (p95 < 500ms, error rate < 1%)"
