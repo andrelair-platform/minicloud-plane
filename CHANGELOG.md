@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/andrelair-platform/minicloud-plane/compare/minicloud-plane-v0.1.1...minicloud-plane-v0.1.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* **website:** correct sidebars.ts brace syntax ([6477d41](https://github.com/andrelair-platform/minicloud-plane/commit/6477d414a46c1419f38a194b610f7ea890bd64e2))
+
 ## [0.1.1](https://github.com/andrelair-platform/minicloud-plane/compare/minicloud-plane-v0.1.0...minicloud-plane-v0.1.1) (2026-08-14)
 
 
