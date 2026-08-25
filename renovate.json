@@ -27,7 +27,7 @@
       "dependencyDashboardApproval": true
     },
     {
-      "description": "Containerfile base images (golang:1.25-alpine, distroless)",
+      "description": "Dockerfile base images (golang:1.25-alpine, distroless)",
       "matchManagers": ["dockerfile"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "base images",
