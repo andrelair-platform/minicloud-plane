@@ -197,9 +197,9 @@ go test -v ./...
 ### Build the container image locally
 
 ```bash
-podman build -f Containerfile -t minicloud-plane:local .
+podman build -f Dockerfile -t minicloud-plane:local .
 # or
-docker build -f Containerfile -t minicloud-plane:local .
+docker build -f Dockerfile -t minicloud-plane:local .
 ```
 
 ### Smoke test the REST proxy
@@ -271,7 +271,7 @@ push (any branch)
                     │
                     ├─ 1. Connect to Tailscale (OAuth)
                     ├─ 2. Trust minicloud CA on runner
-                    ├─ 3. docker build (Containerfile) → push to Harbor
+                    ├─ 3. docker build (Dockerfile) → push to Harbor
                     ├─ 4. Trivy scan — fails on unfixed CRITICAL CVEs
                     ├─ 5. cosign sign (keyless — GitHub OIDC → Sigstore Fulcio)
                     ├─ 6. syft SBOM (CycloneDX JSON) — attached as OCI referrer
