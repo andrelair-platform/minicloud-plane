@@ -428,20 +428,20 @@ jobs:
           fi
           git commit -S -m "ci(minicloud-plane): promote ${SHA} to staging"
           git push origin "${BRANCH}"
+          printf '%s\n' \
+            'Auto-generated staging promotion after:' \
+            '- Unit tests passed' \
+            '- Integration tests passed (httptest)' \
+            '- Container image built, Trivy scanned, Cosign signed' \
+            '- BlueGreen Rollout reached Healthy in dev' \
+            '- HTTP smoke probe passed (/health)' \
+            '' \
+            '**Merge this PR to deploy to staging. Manual ArgoCD sync required after merge.**' \
+            > /tmp/pr-body.md
           gh pr create \
             --repo ${{ env.GITOPS_REPO }} \
             --base main \
             --head "${BRANCH}" \
             --title "promote(minicloud-plane): ${SHA} → staging" \
-            --body "$(cat <<'BODY'
-Auto-generated staging promotion after:
-- Unit tests passed
-- Integration tests passed (httptest)
-- Container image built, Trivy scanned, Cosign signed
-- BlueGreen Rollout reached Healthy in dev
-- HTTP smoke probe passed (/health)
-
-**Merge this PR to deploy to staging. Manual ArgoCD sync required after merge.**
-BODY
-)"
+            --body-file /tmp/pr-body.md
           echo "Staging promotion PR created for ${SHA}"
