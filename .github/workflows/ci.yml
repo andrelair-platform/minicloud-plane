@@ -374,7 +374,9 @@ jobs:
 
   # ── 7. Auto-promote to staging (main branch only, after both gates pass) ────
   promote-staging:
-    needs: [smoke-test, canary-load]
+    # build-and-push must be a DIRECT need to access needs.build-and-push.outputs
+    # (the needs context is not transitive); smoke-test/canary-load already gate ordering.
+    needs: [build-and-push, smoke-test, canary-load]
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     steps:
