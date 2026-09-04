@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.2](https://github.com/andrelair-platform/minicloud-plane/compare/minicloud-plane-v0.1.1...minicloud-plane-v0.1.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **ci:** add build-and-push to promote-staging needs (invalid context access) ([#25](https://github.com/andrelair-platform/minicloud-plane/issues/25)) ([eaf4205](https://github.com/andrelair-platform/minicloud-plane/commit/eaf4205904746f7058ec0f5bb599197da5e3544c))
+* **ci:** remove column-0 heredoc that broke YAML parsing ([#24](https://github.com/andrelair-platform/minicloud-plane/issues/24)) ([d3ee3ff](https://github.com/andrelair-platform/minicloud-plane/commit/d3ee3ffd602d5616e564624c1df8c3f35c9c1df0))
+* **deps:** bump grpc v1.81.1-&gt;v1.82.1 + go 1.25.13 (clear govulncheck) ([#26](https://github.com/andrelair-platform/minicloud-plane/issues/26)) ([1f27f7d](https://github.com/andrelair-platform/minicloud-plane/commit/1f27f7d7ae12561121d82ed1792fc49a2a61093a))
+* **website:** correct sidebars.ts brace syntax ([6477d41](https://github.com/andrelair-platform/minicloud-plane/commit/6477d414a46c1419f38a194b610f7ea890bd64e2))
+
 ## [0.1.1](https://github.com/andrelair-platform/minicloud-plane/compare/minicloud-plane-v0.1.0...minicloud-plane-v0.1.1) (2026-08-14)
 
 
